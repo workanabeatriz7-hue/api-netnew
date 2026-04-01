@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, send_file
 import requests
 import io
+import os
 
 app = Flask(__name__)
 
@@ -61,15 +62,17 @@ def gerar_boleto():
     # Pega a primeira fatura pendente da lista
     fatura_atual = dados_faturas[0] if isinstance(dados_faturas, list) else dados_faturas
     
-    # Tenta localizar o código de cobrança em diferentes chaves possíveis
-    cod_cobranca = fatura_atual.get('codCobranca') or fatura_atual.get('id') or fatura_atual.get('codigo')
-    data_vencimento = fatura_atual.get('dataVencimento')
+    # --- A CORREÇÃO DE OURO: Lendo as chaves em minúsculo conforme a API da NetNew ---
+    cod_cobranca = fatura_atual.get('codcobranca') or fatura_atual.get('codCobranca') or fatura_atual.get('id')
+    data_vencimento = fatura_atual.get('datavencimento') or fatura_atual.get('dataVencimento')
 
     if not cod_cobranca:
         return jsonify({"erro": "Código de cobrança não localizado nos dados da fatura.", "debug": fatura_atual}), 404
 
     # --- PASSO 3: Gerar o PDF da 2ª Via ---
     url_2avia = f"{API_BASE}/api/v1/cliente/faturas/2avia/"
+    
+    # Monta a requisição final para baixar o boleto
     payload_2avia = {
         'codCobranca': cod_cobranca,
         'dataVencimento': data_vencimento,
@@ -90,6 +93,5 @@ def gerar_boleto():
 
 if __name__ == '__main__':
     # No Render a porta é definida pela variável de ambiente PORT
-    import os
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
