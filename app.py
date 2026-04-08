@@ -67,27 +67,37 @@ def enviar_pdf_chat():
 
     dados_faturas = []
     
-    # BLINDAGEM: Busca faturas abertas
+    # BUSCA 1: Faturas Abertas
     try:
-        res_faturas = requests.get(f"{API_BASE}/api/v1/cliente/faturas/abertas/{cpf_limpo}", headers=headers_netnew, timeout=15)
-        if res_faturas.status_code == 200:
-            dados_faturas = res_faturas.json().get('data', [])
-    except Exception:
+        res_abertas = requests.get(f"{API_BASE}/api/v1/cliente/completo/faturas/abertas/{cpf_limpo}", headers=headers_netnew, timeout=15)
+        if res_abertas.status_code == 200:
+            lista_abertas = res_abertas.json().get('data', [])
+            if isinstance(lista_abertas, list):
+                dados_faturas.extend(lista_abertas)
+    except:
         pass
         
-    # BLINDAGEM: Se não achar, busca no histórico
-    if not dados_faturas:
-        try:
-            res_hist = requests.get(f"{API_BASE}/api/v1/cliente/faturas/historico/{cpf_limpo}", headers=headers_netnew, timeout=15)
-            if res_hist.status_code == 200:
-                json_data = res_hist.json()
-                lista = json_data.get('data', []) if isinstance(json_data, dict) else json_data
-                if isinstance(lista, list):
-                    dados_faturas = [f for f in lista if isinstance(f, dict) and f.get('status') != 'PAGO']
-        except Exception:
-            pass
+    # BUSCA 2: Faturas Vencidas
+    try:
+        res_vencidas = requests.get(f"{API_BASE}/api/v1/cliente/completo/faturas/vencidas/{cpf_limpo}", headers=headers_netnew, timeout=15)
+        if res_vencidas.status_code == 200:
+            lista_vencidas = res_vencidas.json().get('data', [])
+            if isinstance(lista_vencidas, list):
+                dados_faturas.extend(lista_vencidas)
+    except:
+        pass
 
-    if not dados_faturas:
+    # Filtragem para remover duplicatas e títulos pagos (por segurança)
+    faturas_filtradas = []
+    ids_vistos = set()
+    for f in dados_faturas:
+        if not isinstance(f, dict): continue
+        cod = f.get('codcobranca') or f.get('codCobranca') or f.get('id')
+        if cod and cod not in ids_vistos and f.get('status') != 'PAGO':
+            faturas_filtradas.append(f)
+            ids_vistos.add(cod)
+
+    if not faturas_filtradas:
         return jsonify({"status": "sem_pendencias"})
 
     headers_zap = {"Authorization": f"Bearer {ZAP_TOKEN}", "Content-Type": "application/json"}
@@ -95,9 +105,7 @@ def enviar_pdf_chat():
     max_atraso_dias = 0
     texto_meses = "📄 *Resumo das suas faturas:*\n\n"
     
-    lista_faturas = dados_faturas if isinstance(dados_faturas, list) else [dados_faturas]
-
-    for fatura in lista_faturas:
+    for fatura in faturas_filtradas:
         cod_cobranca = fatura.get('codcobranca') or fatura.get('codCobranca') or fatura.get('id')
         data_vencimento = fatura.get('datavencimento') or fatura.get('dataVencimento')
         if not cod_cobranca or not data_vencimento: continue
