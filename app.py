@@ -93,7 +93,11 @@ def enviar_pdf_chat():
     for f in dados_faturas:
         if not isinstance(f, dict): continue
         cod = f.get('codcobranca') or f.get('codCobranca') or f.get('id')
-        if cod and cod not in ids_vistos and f.get('status') != 'PAGO':
+        
+        # Converte o status para maiúsculo para garantir que não passe nada quitado
+        status_fatura = str(f.get('status', '')).upper()
+        
+        if cod and cod not in ids_vistos and status_fatura != 'PAGO':
             faturas_filtradas.append(f)
             ids_vistos.add(cod)
 
@@ -111,17 +115,24 @@ def enviar_pdf_chat():
         if not cod_cobranca or not data_vencimento: continue
             
         try:
-            data_obj = datetime.strptime(data_vencimento[:10], "%Y-%m-%d")
+            # Tenta ler no padrão do banco (YYYY-MM-DD), se falhar, lê no padrão BR (DD/MM/YYYY)
+            try:
+                data_obj = datetime.strptime(data_vencimento[:10], "%Y-%m-%d")
+            except ValueError:
+                data_obj = datetime.strptime(data_vencimento[:10], "%d/%m/%Y")
+            
             mes_formatado = data_obj.strftime("%m/%Y")
             dias_atraso = (hoje - data_obj).days
             
-            if dias_atraso > max_atraso_dias: max_atraso_dias = dias_atraso
+            if dias_atraso > max_atraso_dias: 
+                max_atraso_dias = dias_atraso
                 
             if dias_atraso > 0:
-                texto_meses += f"👉 Fatura do mês {mes_formatado} (Vencida há {dias_atraso} dias)\n"
+                texto_meses += f"👉 Fatura de {mes_formatado} (Vencida há {dias_atraso} dias)\n"
             else:
-                texto_meses += f"👉 Fatura do mês {mes_formatado} (A vencer)\n"
-        except: pass
+                texto_meses += f"👉 Fatura de {mes_formatado} (A vencer)\n"
+        except: 
+            pass
             
         payload_pdf = {"type": "document", "number": telefone_limpo, "url": f"https://api-netnew.onrender.com/webhook/gerar_boleto?cod_cobranca={cod_cobranca}&vencimento={data_vencimento}&cpf={cpf_limpo}"}
         requests.post(f"https://api.zapresponder.com.br/api/whatsapp/message/{ZAP_DEPARTAMENTO_ID}", json=payload_pdf, headers=headers_zap)
