@@ -57,6 +57,7 @@ def enviar_pdf_chat():
     telefone = request.args.get('telefone')
     
     if not cpf or not telefone:
+        print("ERRO: CPF ou Telefone não recebidos no Webhook")
         return jsonify({"status": "erro"}), 400
         
     telefone_limpo = "55" + "".join(filter(str.isdigit, telefone)) if not "".join(filter(str.isdigit, telefone)).startswith("55") else "".join(filter(str.isdigit, telefone))
@@ -102,6 +103,7 @@ def enviar_pdf_chat():
             ids_vistos.add(cod)
 
     if not faturas_filtradas:
+        print(f"INFO: Nenhuma fatura encontrada para o CPF {cpf_limpo}")
         return jsonify({"status": "sem_pendencias"})
 
     headers_zap = {"Authorization": f"Bearer {ZAP_TOKEN}", "Content-Type": "application/json"}
@@ -135,9 +137,16 @@ def enviar_pdf_chat():
             pass
             
         payload_pdf = {"type": "document", "number": telefone_limpo, "url": f"https://api-netnew.onrender.com/webhook/gerar_boleto?cod_cobranca={cod_cobranca}&vencimento={data_vencimento}&cpf={cpf_limpo}"}
-        requests.post(f"https://api.zapresponder.com.br/api/whatsapp/message/{ZAP_DEPARTAMENTO_ID}", json=payload_pdf, headers=headers_zap)
+        
+        # LOGS E RASTREIO ADICIONADOS AQUI:
+        print(f"Enviando PDF para o ZapResponder (Numero: {telefone_limpo})...")
+        resp_pdf = requests.post(f"https://api.zapresponder.com.br/api/whatsapp/message/{ZAP_DEPARTAMENTO_ID}", json=payload_pdf, headers=headers_zap)
+        print(f"Retorno da API do ZapResponder (PDF): {resp_pdf.status_code} - {resp_pdf.text}")
 
-    requests.post(f"https://api.zapresponder.com.br/api/whatsapp/message/{ZAP_DEPARTAMENTO_ID}", json={"type": "text", "message": texto_meses, "number": telefone_limpo}, headers=headers_zap)
+    # LOGS E RASTREIO ADICIONADOS AQUI:
+    print(f"Enviando TEXTO de resumo para o ZapResponder (Numero: {telefone_limpo})...")
+    resp_texto = requests.post(f"https://api.zapresponder.com.br/api/whatsapp/message/{ZAP_DEPARTAMENTO_ID}", json={"type": "text", "message": texto_meses, "number": telefone_limpo}, headers=headers_zap)
+    print(f"Retorno da API do ZapResponder (TEXTO): {resp_texto.status_code} - {resp_texto.text}")
 
     if max_atraso_dias > 2:
         return jsonify({"status": "bloqueado"})
