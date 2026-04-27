@@ -72,7 +72,6 @@ def enviar_pdf_chat():
     try:
         res_abertas = requests.get(f"{API_BASE}/api/v1/cliente/completo/faturas/abertas/{cpf_limpo}", headers=headers_netnew, timeout=15)
         if res_abertas.status_code == 200:
-            # CORREÇÃO APLICADA: Lendo a chave 'faturas' da NetNew
             lista_abertas = res_abertas.json().get('faturas', [])
             if isinstance(lista_abertas, list):
                 dados_faturas.extend(lista_abertas)
@@ -83,7 +82,6 @@ def enviar_pdf_chat():
     try:
         res_vencidas = requests.get(f"{API_BASE}/api/v1/cliente/completo/faturas/vencidas/{cpf_limpo}", headers=headers_netnew, timeout=15)
         if res_vencidas.status_code == 200:
-            # CORREÇÃO APLICADA: Lendo a chave 'faturas' da NetNew
             lista_vencidas = res_vencidas.json().get('faturas', [])
             if isinstance(lista_vencidas, list):
                 dados_faturas.extend(lista_vencidas)
@@ -97,10 +95,8 @@ def enviar_pdf_chat():
         if not isinstance(f, dict): continue
         cod = f.get('codcobranca') or f.get('codCobranca') or f.get('id')
         
-        # CORREÇÃO APLICADA: Lendo 'situacao' (0 = aberto, 1 = pago)
         status_fatura = str(f.get('situacao', f.get('status', ''))).upper()
         
-        # Só adiciona se não estiver pago ('PAGO' ou '1')
         if cod and cod not in ids_vistos and status_fatura not in ['PAGO', '1']:
             faturas_filtradas.append(f)
             ids_vistos.add(cod)
@@ -119,6 +115,8 @@ def enviar_pdf_chat():
         data_vencimento = fatura.get('datavencimento') or fatura.get('dataVencimento')
         if not cod_cobranca or not data_vencimento: continue
             
+        nome_arquivo_pdf = "Boleto.pdf" # Fallback de segurança
+        
         try:
             # Tenta ler no padrão do banco (YYYY-MM-DD), se falhar, lê no padrão BR (DD/MM/YYYY)
             try:
@@ -136,17 +134,24 @@ def enviar_pdf_chat():
                 texto_meses += f"👉 Fatura de {mes_formatado} (Vencida há {dias_atraso} dias)\n"
             else:
                 texto_meses += f"👉 Fatura de {mes_formatado} (A vencer)\n"
+                
+            # Define o nome do PDF com o mês e ano correspondente
+            nome_arquivo_pdf = f"Boleto_{data_obj.strftime('%m-%Y')}.pdf"
+            
         except: 
             pass
             
-        payload_pdf = {"type": "document", "number": telefone_limpo, "url": f"https://api-netnew.onrender.com/webhook/gerar_boleto?cod_cobranca={cod_cobranca}&vencimento={data_vencimento}&cpf={cpf_limpo}"}
+        payload_pdf = {
+            "type": "document", 
+            "number": telefone_limpo, 
+            "url": f"https://api-netnew.onrender.com/webhook/gerar_boleto?cod_cobranca={cod_cobranca}&vencimento={data_vencimento}&cpf={cpf_limpo}",
+            "fileName": nome_arquivo_pdf
+        }
         
-        # LOGS E RASTREIO
-        print(f"Enviando PDF para o ZapResponder (Numero: {telefone_limpo})...")
+        print(f"Enviando PDF ({nome_arquivo_pdf}) para o ZapResponder (Numero: {telefone_limpo})...")
         resp_pdf = requests.post(f"https://api.zapresponder.com.br/api/whatsapp/message/{ZAP_DEPARTAMENTO_ID}", json=payload_pdf, headers=headers_zap)
         print(f"Retorno da API do ZapResponder (PDF): {resp_pdf.status_code} - {resp_pdf.text}")
 
-    # LOGS E RASTREIO
     print(f"Enviando TEXTO de resumo para o ZapResponder (Numero: {telefone_limpo})...")
     resp_texto = requests.post(f"https://api.zapresponder.com.br/api/whatsapp/message/{ZAP_DEPARTAMENTO_ID}", json={"type": "text", "message": texto_meses, "number": telefone_limpo}, headers=headers_zap)
     print(f"Retorno da API do ZapResponder (TEXTO): {resp_texto.status_code} - {resp_texto.text}")
